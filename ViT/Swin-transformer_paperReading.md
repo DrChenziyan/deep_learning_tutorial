@@ -37,6 +37,16 @@
     (B, H/32, W/32, 8C)
             |
             |
-            
+        Classification
+
+### 4. Details in code
+  - Relative position encoding
+    1. Create a mshgrid network with dimension of (2, Wh, Ww), where `W` means the window size, and then flatten the newotrk (2, Wh*Ww)
+    2. Generate relative coords by adding a dimension and do the minus.
+    3. Shift the coords and start from 0 by adding the `window_size` to each coords.
+    4. Differentate horizonal and vertical coords by $vertical_coords *= 2*window_size[1]-1$ and plus them.
+  - Shifted window MSA
+    1.  
+
 
 
