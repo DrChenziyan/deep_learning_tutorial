@@ -57,6 +57,8 @@ class PatchEmbedding_2D(nn.Module):
         super(PatchEmbedding_2D, self).__init__()
         img_size = (img_size, img_size)
         patch_size = (patch_size, patch_size)
+        self.embed_dim = embed_dim
+        self.in_planes = in_planes
         self.img_size = img_size
         self.patch_size = patch_size
         self.grid_size = (self.img_size[0] // self.patch_size[0], self.img_size[1] // self.patch_size[1])
@@ -84,6 +86,13 @@ class PatchEmbedding_2D(nn.Module):
             x = x.flatten(2).transpose(1, 2)
         x = self.norm(x)
         return x
+
+    def flops(self):
+        Ho, Wo = self.grid_size
+        flops = Ho * Wo * self.embed_dim *  self.in_planes* (self.patch_size[0] * self.patch_size[1])
+        if self.norm is not None:
+            flops += Ho * Wo * self.embed_dim
+        return flops
 
 
 class Attention(nn.Module):
