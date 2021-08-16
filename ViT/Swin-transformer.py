@@ -55,7 +55,7 @@ class WindowAttention(nn.Module):
     def __init__(self,
                  dim,
                  num_heads,
-                 window_size:tuple,
+                 window_size: tuple,
                  qkv_bias: bool = False,
                  qk_scale=None,
                  attn_drop_ratio=0.,
@@ -115,11 +115,11 @@ class WindowAttention(nn.Module):
         if mask is not None:
             nW = mask.shape[0]
             attn = attn.view(B // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
-            attn = attn.view(-1, self.num_heads, N, N) # [B, num_heads, N, N]
+            attn = attn.view(-1, self.num_heads, N, N)  # [B, num_heads, N, N]
             attn = attn.softmax(dim=-1)
         else:
             attn = attn.softmax(dim=-1)
-        
+
         attn = self.attn_drop(attn)
         res = (attn @ v).transpose(1, 2).reshape(B, N, C)
         res = self.proj(res)
@@ -134,7 +134,7 @@ class WindowAttention(nn.Module):
         # attn -- qk
         flops += self.num_heads * N * (self.dim // self.num_heads) * N
         # qk @ v
-        flops += self.num_heads * N * N (self.dim // self.num_heads)
+        flops += self.num_heads * N * N(self.dim // self.num_heads)
         # proj
         flops += N * self.dim * self.dim
         return flops
@@ -142,43 +142,44 @@ class WindowAttention(nn.Module):
 
 class Block(nn.Module):
     def __init__(self,
-                dim,
-                input_resolution,
-                num_heads,
-                window_size=7,
-                shift_size=0,
-                mlp_ratio=4,
-                qkv_bias: bool = False,
-                qk_scale=None,
-                attn_drop_ratio=0.,
-                droppath_ratio=0.,
-                dropout_ratio=0.,
-                activation_layer:Optional[Callable[..., nn.Module]]=None,
-                norm_layer:Optional[Callable[..., nn.Module]]=None
-                ):
+                 dim,
+                 input_resolution,
+                 num_heads,
+                 window_size=7,
+                 shift_size=0,
+                 mlp_ratio=4,
+                 qkv_bias: bool = False,
+                 qk_scale=None,
+                 attn_drop_ratio=0.,
+                 droppath_ratio=0.,
+                 dropout_ratio=0.,
+                 activation_layer: Optional[Callable[..., nn.Module]] = None,
+                 norm_layer: Optional[Callable[..., nn.Module]] = None
+                 ):
         super(Block, self).__init__()
 
         if activation_layer is None:
             activation_layer = nn.GELU()
         if norm_layer is None:
             norm_layer = nn.LayerNorm(dim)
-        
+
         self.dim = dim
         self.input_resolution = input_resolution
         self.num_heads = num_heads
         self.window_size = window_size
         self.shift_size = shift_size
-        
+
         # if input resolution smaller than window size, windows partition will be passed
         if min(self.input_resolution) <= self.shift_size:
             self.shift_size = 0
             self.window_size = min(self.input_resolution)
-        assert 0<= self.shift_size < self.window_size, 'shift window size must be small than window size'
+        assert 0 <= self.shift_size < self.window_size, 'shift window size must be small than window size'
 
         # Layer_norm1 --> w-msa 
         self.norm1 = norm_layer(dim)
-        self.attn = WindowAttention(dim, num_heads, (window_size, window_size), qkv_bias, qk_scale, attn_drop_ratio, dropout_ratio)
-        
+        self.attn = WindowAttention(dim, num_heads, (window_size, window_size), qkv_bias, qk_scale, attn_drop_ratio,
+                                    dropout_ratio)
+
         # drop_path
         if droppath_ratio > 0:
             self.drop_path = DropPath(drop_prob=droppath_ratio)
@@ -187,13 +188,13 @@ class Block(nn.Module):
 
         # layer_norm --> mlp 
         self.norm2 = norm_layer(dim)
-        self.mlp = MLP(dim, int(mlp_ratio*dim), dim, activation_layer, dropout_ratio=dropout_ratio)
+        self.mlp = MLP(dim, int(mlp_ratio * dim), dim, activation_layer, dropout_ratio=dropout_ratio)
 
         # layer_norm --> sw-msa
         # copy from the source code, need to understand more concretly!!!
         if self.shift_size > 0:
             H, W = self.input_resolution
-            img_mask = torch.zeros((1, H, W, 1))    # [1, H, W, 1]
+            img_mask = torch.zeros((1, H, W, 1))  # [1, H, W, 1]
             h_slices = (slice(0, -self.window_size),
                         slice(-self.window_size, -self.shift_size),
                         slice(-self.shift_size, None))
@@ -215,10 +216,10 @@ class Block(nn.Module):
 
         self.register_buffer("attn_mask", attn_mask)
 
-    def forward(self, x): # x.shape --> [B, HW, embeded_dim]
+    def forward(self, x):  # x.shape --> [B, HW, embeded_dim]
         H, W = self.input_resolution
         B, M, C = x.shape
-        assert M == H*W, f'input shape must be {self.input_resolution}.'
+        assert M == H * W, f'input shape must be {self.input_resolution}.'
 
         shortcut = x
         x = self.norm1(x)
@@ -226,15 +227,15 @@ class Block(nn.Module):
 
         # cyclic shift
         if self.shift_size > 0:
-            shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1,2))
+            shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
         else:
             shifted_x = x
-        
+
         # partition window
-        window_x = window_partition(shifted_x, self.window_size)    #[nW, window_size, window_size, C]
-        window_x = window_x.view(-1, self.window_size*self.window_size, C)  #[nW, window_size*window_size, C]
+        window_x = window_partition(shifted_x, self.window_size)  # [nW, window_size, window_size, C]
+        window_x = window_x.view(-1, self.window_size * self.window_size, C)  # [nW, window_size*window_size, C]
         # w-msa or sw-msa
-        attn_windows = self.attn(window_x, mask=self.attn_mask) #[nW, window_size*window_size, C]
+        attn_windows = self.attn(window_x, mask=self.attn_mask)  # [nW, window_size*window_size, C]
 
         # merge window
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
@@ -242,7 +243,7 @@ class Block(nn.Module):
 
         # reverse cyclic window
         if self.shift_size > 0:
-            shifted_x = torch.roll(x, shifts=(self.shift_size, self.shift_size), dims=(1,2))
+            shifted_x = torch.roll(x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
         else:
             shifted_x = x
         x = x.view(B, M, C)
@@ -251,7 +252,7 @@ class Block(nn.Module):
         x = shortcut + self.drop_path(x)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
-    
+
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, " \
                f"window_size={self.window_size}, shift_size={self.shift_size}, mlp_ratio={self.mlp_ratio}"
@@ -275,27 +276,28 @@ class PatchMerging(nn.Module):
     """
     Patch Merging Layer. 
     """
+
     def __init__(self,
-                input_resolution,
-                dim,
-                norm_layer: Optional[Callable[..., nn.Module]]=None
-                ):
+                 input_resolution,
+                 dim,
+                 norm_layer: Optional[Callable[..., nn.Module]] = None
+                 ):
         super(PatchMerging, self).__init__()
         self.input_resolution = input_resolution
         self.dim = dim
         if norm_layer is None:
             norm_layer = nn.LayerNorm
-        self.reduction = nn.Linear(4*dim, 2*dim, bias=False)
+        self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
         self.norm = norm_layer()
 
     def forward(self, x):
         H, W = self.input_resolution
         B, M, C = x.shape
-        assert M == H*W, f'input shape must be {self.input_resolution}.'
+        assert M == H * W, f'input shape must be {self.input_resolution}.'
         assert H % 2 == 0 and W % 2 == 0, f'x size {H}x{W} are not even.'
 
         x = x.view(B, H, W, C)
-        
+
         x0 = x[:, 0::2, 0::2, :]  # B H/2 W/2 C
         x1 = x[:, 1::2, 0::2, :]  # B H/2 W/2 C
         x2 = x[:, 0::2, 1::2, :]  # B H/2 W/2 C
@@ -308,7 +310,7 @@ class PatchMerging(nn.Module):
         x = self.reduction(x)
 
         return x
-    
+
     def extra_repr(self) -> str:
         return f"input_resolution={self.input_resolution}, dim={self.dim}"
 
@@ -321,21 +323,21 @@ class PatchMerging(nn.Module):
 
 class BasicLayer(nn.Module):
     def __init__(self,
-                dim,
-                input_resolution,
-                depth,
-                num_heads,
-                window_size,
-                mlp_ratio=4,
-                qkv_bias=False,
-                qk_scale=0,
-                attn_drop_ratio=0.,
-                droppath_ratio=0.,
-                dropout_ratio=0.,
-                norm_layer:Optional[Callable[..., nn.Module]]=None,
-                downsample=None,
-                use_checkpoint=False,
-                ):
+                 dim,
+                 input_resolution,
+                 depth,
+                 num_heads,
+                 window_size,
+                 mlp_ratio=4,
+                 qkv_bias=False,
+                 qk_scale=0,
+                 attn_drop_ratio=0.,
+                 droppath_ratio=0.,
+                 dropout_ratio=0.,
+                 norm_layer: Optional[Callable[..., nn.Module]] = None,
+                 downsample=None,
+                 use_checkpoint=False,
+                 ):
         super(BasicLayer, self).__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -343,19 +345,18 @@ class BasicLayer(nn.Module):
         self.num_heads = num_heads
         self.use_checkpoint = use_checkpoint
 
-
         # build blocks
         self.blocks = nn.ModuleList([
             Block(dim=dim, input_resolution=input_resolution,
-                num_heads=num_heads, window_size=window_size,
-                shift_size=0 if(i%2==0)else window_size//2,
-                mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, 
-                qk_scale=qk_scale, attn_drop_ratio=attn_drop_ratio, 
-                droppath_ratio=droppath_ratio,
-                dropout_ratio=dropout_ratio, norm_layer=norm_layer)
+                  num_heads=num_heads, window_size=window_size,
+                  shift_size=0 if (i % 2 == 0) else window_size // 2,
+                  mlp_ratio=mlp_ratio, qkv_bias=qkv_bias,
+                  qk_scale=qk_scale, attn_drop_ratio=attn_drop_ratio,
+                  droppath_ratio=droppath_ratio,
+                  dropout_ratio=dropout_ratio, norm_layer=norm_layer)
             for i in range(depth)
         ])
-    
+
         # patch merging layer
         if downsample is not None:
             self.downsample = downsample(input_resolution, dim, norm_layer)
@@ -368,10 +369,10 @@ class BasicLayer(nn.Module):
                 x = checkpoint.checkpoint(blk, x)
             else:
                 x = blk(x)
-            
+
         if self.downsample is not None:
             x = self.downsample(x)
-        
+
         return x
 
     def extra_repr(self) -> str:
@@ -384,23 +385,23 @@ class BasicLayer(nn.Module):
         if self.downsample is not None:
             flops += self.downsample.flops()
         return flops
-   
+
 
 class SwinTransformer(nn.Module):
     def __init__(self,
-                img_size=224,
-                patch_size=4,
-                in_planes=3,
-                num_classes=1000,
-                embed_dim=96,
-                depths=[2, 2, 6, 2],
-                num_heads=[3, 6, 12, 4],
-                embed_layer=PatchEmbedding_2D,
-                window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
-                dropout_ratio=0., attn_drop_ratio=0., droppath_ratio=0.1,
-                norm_layer:Optional[Callable[..., nn.Module]]=None, 
-                ape=False, patch_norm=True,
-                use_checkpoint=False, **kwargs):
+                 img_size=224,
+                 patch_size=4,
+                 in_planes=3,
+                 num_classes=1000,
+                 embed_dim=96,
+                 depths=[2, 2, 6, 2],
+                 num_heads=[3, 6, 12, 4],
+                 embed_layer=PatchEmbedding_2D,
+                 window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
+                 dropout_ratio=0., attn_drop_ratio=0., droppath_ratio=0.1,
+                 norm_layer: Optional[Callable[..., nn.Module]] = None,
+                 ape=False, patch_norm=True,
+                 use_checkpoint=False, **kwargs):
         super(SwinTransformer, self).__init__()
 
         self.num_classes = num_classes
@@ -411,7 +412,7 @@ class SwinTransformer(nn.Module):
         self.mlp_ratio = mlp_ratio
         self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
         norm_layer = partial(nn.LayerNorm, eps=1e-6)
-        
+
         # patch_embeding
         self.patch_embeding = embed_layer(img_size, patch_size, in_planes, embed_dim)
         num_patches = self.patch_embedding.num_patches
@@ -422,7 +423,7 @@ class SwinTransformer(nn.Module):
         if self.ape is True:
             self.absolute_position_encoding = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))
             trunc_normal_(self.absolute_position_encoding, std=.02)
-        
+
         # drop out
         self.pos_drop = nn.Dropout(p=dropout_ratio)
 
@@ -436,12 +437,12 @@ class SwinTransformer(nn.Module):
                 input_resolution=(
                     self.grid_size[0] // (2 ** layer_i), self.grid_size[1] // (2 ** layer_i)
                 ),
-                depths = depths[layer_i], num_heads=num_heads[layer_i],
+                depths=depths[layer_i], num_heads=num_heads[layer_i],
                 window_size=window_size, mlp_ratio=self.mlp_ratio,
                 qkv_bias=qkv_bias, qk_scale=qk_scale,
                 attn_drop_ratio=attn_drop_ratio,
-                droppath_ratio=dpr[sum(depths[:layer_i]): sum(depths[:layer_i+1])],
-                dropout_ratio=dropout_ratio,norm_layer=norm_layer,
+                droppath_ratio=dpr[sum(depths[:layer_i]): sum(depths[:layer_i + 1])],
+                dropout_ratio=dropout_ratio, norm_layer=norm_layer,
                 downsample=PatchMerging if (layer_i < self.num_layers - 1) else None,
                 use_checkpoint=use_checkpoint
             )
@@ -450,13 +451,12 @@ class SwinTransformer(nn.Module):
         # last several layers
         self.norm_layer = norm_layer(self.num_features)
         self.pool = nn.AdaptiveAvgPool2d(1)
-        
+
         # classification
         self.head = nn.Linear(self.num_features, self.num_classes) if self.num_classes > 0 else nn.Identity()
 
         self.apply(self._init_weights)
 
-    
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
             trunc_normal_(m.weight, std=.02)
@@ -465,7 +465,6 @@ class SwinTransformer(nn.Module):
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
-    
 
     def _forward_impl(self, x):
         # [B, C, H, W] -> [B,N,embed_dim]
@@ -477,10 +476,10 @@ class SwinTransformer(nn.Module):
         for layer in self.layers:
             x = layer(x)
 
-        x = self.norm_layer(x) # [B, N, embed_dim]
+        x = self.norm_layer(x)  # [B, N, embed_dim]
         x = self.pool(x.transpose(1, 2))
-        x = torch.flatten(x,1)
-        
+        x = torch.flatten(x, 1)
+
         return x
 
     def forward(self, x):
@@ -496,8 +495,3 @@ class SwinTransformer(nn.Module):
         flops += self.num_features * self.grid_size[0] * self.grid_size[1] // (2 ** self.num_layers)
         flops += self.num_features * self.num_classes
         return flops
-
-
-
-
-
