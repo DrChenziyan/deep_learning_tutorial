@@ -37,5 +37,3 @@
         ReLU6 is available on virtually all software and hardware frameworks. And the h-sigmoid and h-swish could be easy for derivaition and quantization.
         * Squeeze-and-Exciation blocks: EfficientNet also applied this.
         * Redesign the expensive layers: Use less filters than V1 and V2 and more efficient last stage to reduce the latency.
-  
-          

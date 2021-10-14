@@ -1,5 +1,6 @@
 # ! -*- coding: utf-8 -*-
 from math import e
+from typing import Callable, Optional
 import torch
 from torch._C import R
 import torch.nn as nn
