@@ -57,4 +57,10 @@ To implement pruning sparsification, using [`Gumbel-Softmax`](https://arxiv.org/
   * $$\mathcal{L} = \mathcal{L}_{cls} + \lambda_{distill}\mathcal{L_{distill}} + \lambda_{KL}\mathcal{L}_{KL} + \lambda_{MSE}\mathcal{L}_{MSE} $$
 
 
+### Summary
+    1. Accuracy
+    2. Model scaling: like EfficientNet, DynamicViT 
+    3. Highlights:
+       1. pruning tokens: KD
+       2. tokens sparsification: Gumbel-softmax and attention mask
 
